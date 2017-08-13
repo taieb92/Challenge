@@ -17,6 +17,7 @@ Spring Boot enables you to run the application within your IDE, inside an embedd
  - Done.
 
 Application logs are written to challenge.log inside your project folder.
+logging can be configured in application.properties
 
 ## API Documentation
 
