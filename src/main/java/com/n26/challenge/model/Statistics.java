@@ -15,7 +15,7 @@ public class Statistics {
    * @return the sum
    */
   public double getSum() {
-    return sum;
+    return Math.round(sum * 100) / 100.0d;
   }
 
   /**
@@ -30,7 +30,7 @@ public class Statistics {
    */
   public double getAvg() {
 
-    return count!=0 ?  Math.round(sum/count* 100) / 100.0d : 0d;
+    return count != 0 ? Math.round(sum / count * 100) / 100.0d : 0d;
   }
 
   /**
@@ -105,9 +105,9 @@ public class Statistics {
 
 
 
-
-
-  /* (non-Javadoc)
+  /*
+   * (non-Javadoc)
+   *
    * @see java.lang.Object#hashCode()
    */
   @Override
@@ -125,7 +125,9 @@ public class Statistics {
     return result;
   }
 
-  /* (non-Javadoc)
+  /*
+   * (non-Javadoc)
+   *
    * @see java.lang.Object#equals(java.lang.Object)
    */
   @Override
@@ -162,8 +164,8 @@ public class Statistics {
    */
   @Override
   public String toString() {
-    return "Statistics [sum=" + sum + ", avg=" + getAvg() + ", max=" + max + ", min=" + min + ", count="
-        + count + "]";
+    return "Statistics [sum=" + sum + ", avg=" + getAvg() + ", max=" + max + ", min=" + min
+        + ", count=" + count + "]";
   }
 
 
