@@ -1,7 +1,6 @@
 package com.n26.challenge.service;
 
 import java.time.Instant;
-import java.util.concurrent.locks.ReentrantLock;
 
 import org.assertj.core.util.VisibleForTesting;
 import org.slf4j.Logger;
@@ -32,14 +31,22 @@ public class StatisticsServiceImpl implements StatisticsService {
    * A mutual exclusive lock, used so that we make sure that the statistics are threadsafe with
    * concurrent requests
    */
-  private final ReentrantLock lock = new ReentrantLock();
+  private final ReadWriteLock lock = new ReadWriteLock();
 
   @Autowired
   TransactionDataAccess transactionDataAccess;
 
 
   public Statistics getStatistics() {
-    return stats;
+    lock.lockRead();
+    try {
+
+
+      return stats;
+    } finally {
+      lock.unlockRead();
+    }
+
   }
 
   @VisibleForTesting
@@ -48,27 +55,29 @@ public class StatisticsServiceImpl implements StatisticsService {
   }
 
   public boolean addTransactionToStats(Transaction transaction) {
-
-
-    log.debug("adding transaction {} to stats", transaction);
-
     // lock to update the stats then unlock just after
-    lock.lock();
-    stats.setSum(stats.getSum() + transaction.getAmount());
-    // if there is a min, there will be a max
-    if (!Double.isNaN(stats.getMin())) {
-      stats.setMin(Math.min(stats.getMin(), transaction.getAmount()));
-      stats.setMax(Math.max(stats.getMax(), transaction.getAmount()));
-    }
-    // visversa
-    else {
-      stats.setMin(transaction.getAmount());
-      stats.setMax(transaction.getAmount());
+    lock.lockWrite();
 
+    try {
+      log.debug("adding transaction {} to stats", transaction);
+      stats.setSum(stats.getSum() + transaction.getAmount());
+      // if there is a min, there will be a max
+      if (!Double.isNaN(stats.getMin())) {
+        stats.setMin(Math.min(stats.getMin(), transaction.getAmount()));
+        stats.setMax(Math.max(stats.getMax(), transaction.getAmount()));
+      }
+      // visversa
+      else {
+        stats.setMin(transaction.getAmount());
+        stats.setMax(transaction.getAmount());
+
+      }
+
+      stats.setCount(stats.getCount() + 1);
+    } finally {
+      lock.unlockWrite();
     }
 
-    stats.setCount(stats.getCount() + 1);
-    lock.unlock();
     return true;
 
 
@@ -77,45 +86,47 @@ public class StatisticsServiceImpl implements StatisticsService {
 
 
   public boolean removeTransactionFromStats(Transaction transaction) {
-    log.debug("removing {} from stats", transaction);
     // lock to update the stats then unlock just after
-    lock.lock();
+    lock.lockWrite();
 
 
-    double sum = roundDouble(stats.getSum() - transaction.getAmount());
-    stats.setSum(sum);
-    if(sum < 1e-4) {
-      stats.setMin(Double.NaN);
-      stats.setMax(Double.NaN);
-      stats.setCount(0);
+    try {
+      log.debug("removing {} from stats", transaction);
+      double sum = roundDouble(stats.getSum() - transaction.getAmount());
+      stats.setSum(sum);
+      if (sum < 1e-4) {
+        stats.setMin(Double.NaN);
+        stats.setMax(Double.NaN);
+        stats.setCount(0);
+      } else {
+        stats.setCount(stats.getCount() - 1);
+
+
+        double min = stats.getMin();
+        // if the transaction value was the min, we need to find the new min
+        if (Math.abs(transaction.getAmount() - stats.getMin()) < 1e-4) {
+
+          Long nowEpochTime = Instant.now().toEpochMilli();
+          min =
+              transactionDataAccess.getMinTransactionValue(nowEpochTime,
+                  STATISTICS_CALCULATOR_DURATION);
+        }
+
+        double max = stats.getMax();
+        // same here
+        if (Math.abs(transaction.getAmount() - stats.getMax()) < 1e-4) {
+          Long nowEpochTime = Instant.now().toEpochMilli();
+          max =
+              transactionDataAccess.getMaxTransactionValue(nowEpochTime,
+                  STATISTICS_CALCULATOR_DURATION);
+        }
+
+        stats.setMin(min);
+        stats.setMax(max);
+      }
+    } finally {
+      lock.unlockWrite();
     }
-    else{
-      stats.setCount(stats.getCount() - 1);
-
-
-    double min = stats.getMin();
-    // if the transaction value was the min, we need to find the new min
-    if (Math.abs(transaction.getAmount() - stats.getMin()) < 1e-4) {
-
-      Long nowEpochTime = Instant.now().toEpochMilli();
-      min =
-          transactionDataAccess
-              .getMinTransactionValue(nowEpochTime, STATISTICS_CALCULATOR_DURATION);
-    }
-
-    double max = stats.getMax();
-    // same here
-    if (Math.abs(transaction.getAmount() - stats.getMax()) < 1e-4) {
-      Long nowEpochTime = Instant.now().toEpochMilli();
-      max =
-          transactionDataAccess
-              .getMaxTransactionValue(nowEpochTime, STATISTICS_CALCULATOR_DURATION);
-    }
-
-    stats.setMin(min);
-    stats.setMax(max);
-    }
-    lock.unlock();
     return true;
   }
 

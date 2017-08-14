@@ -5,8 +5,10 @@ import static org.mockito.Matchers.any;
 import static org.mockito.Mockito.when;
 
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
 
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -33,6 +35,90 @@ public class StatisticsServiceTest {
 
   }
 
+  @Ignore("slows build")
+  @Test
+  public void testForThreadClash() {
+
+    Statistics stats = new Statistics(25, 15, 10, 2);
+
+
+    statisticsService.setStatistics(stats);
+    for(int i=0;i<10;i++) {
+    threadClash();
+    try {
+      Thread.sleep(1000);
+    } catch (InterruptedException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    }
+double sum = statisticsService.getStatistics().getSum();
+long count = statisticsService.getStatistics().getCount();
+assertEquals(3025, sum,0.001);
+assertEquals(1002, count);
+  }
+
+/**
+ * 500 operation at the time
+ * add 300 to the sum and 100 to count
+ */
+  private void threadClash() {
+    Long now = Instant.now().toEpochMilli();
+    final CountDownLatch latch = new CountDownLatch(1);
+    Transaction transaction = new Transaction(2, now);
+    for (int i=0; i<200; ++i) {
+      Runnable runner = new Runnable() {
+        public void run() {
+          try {
+            latch.await();
+              statisticsService.addTransactionToStats(transaction);
+          } catch (InterruptedException ie) { } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+          }
+        }
+      };
+      new Thread(runner, "TestThread"+i).start();
+    }
+
+    Transaction newTransaction = new Transaction(1, now);
+    for (int i=0; i<100; ++i) {
+      Runnable runner = new Runnable() {
+        public void run() {
+          try {
+            latch.await();
+              statisticsService.removeTransactionFromStats(newTransaction);
+          } catch (InterruptedException ie) { } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+          }
+        }
+      };
+      new Thread(runner, "TestThread"+i).start();
+    }
+
+    for (int i=0; i<200; ++i) {
+      Runnable runner = new Runnable() {
+        public void run() {
+          try {
+            latch.await();
+              statisticsService.getStatistics();
+          } catch (InterruptedException ie) { } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+          }
+        }
+      };
+      new Thread(runner, "TestThread"+i).start();
+    }
+    latch.countDown(); // release the latch
+    try {
+      Thread.sleep(200);
+    } catch (InterruptedException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+  }
   @Test
   public void testAddTransactionToStatsWithEmptyStats() throws Exception {
     Statistics stats = new Statistics();
